@@ -41,7 +41,7 @@ fnPullQuoteData_singleQuote<- function(aTickerList, aLogger){
   return(fQueryTibble)
 }
 
-fnAddIntradayIndicatorCols <- function(aRecentDatapoints, aMasterDataFrame, aPeriodCount = 12, aPeriod_sec, aLogger = FALSE){
+fnAddIntradayIndicatorCols <- function(aRecentDatapoints, aMasterDataFrame, aPeriodCount, aPeriod_sec, aLogger = FALSE){
   #We are building the output tib row by row to avoid excessive joining logic & column management
   fOutputTib = NULL
   if(aLogger){
@@ -59,15 +59,14 @@ fnAddIntradayIndicatorCols <- function(aRecentDatapoints, aMasterDataFrame, aPer
   for (i in 1:nrow(aRecentDatapoints)){
     #Generate tibble with only the points we need on this iteration
     if(!is.null(aMasterDataFrame)){
-      fCalcTib = bind_rows(aRecentDatapoints[i,], fOldRows[fOldRows$Symbol == aRecentDatapoints$Symbol[i],])
+      fCalcTib = bind_rows(fOldRows[fOldRows$Symbol == aRecentDatapoints$Symbol[i],], aRecentDatapoints[i,])
     }
     else{
       fCalcTib = aRecentDatapoints[i,]
     }
     #Bind existing row data with calculated data.
-    #Note, we currently only have one set of indicators being added on with the fnLiveIndicatorsCall
     #This would be a reasonable place to add additional indicator functions
-    fIndicatorRowResult <- bind_cols(aRecentDatapoints[i, ], fnLiveIndicators(fCalcTib, aPeriodCount))
+    fIndicatorRowResult <- bind_cols(aRecentDatapoints[i, ], fnPriceSlope(fCalcTib, aPeriodCount), fnRelVol(fCalcTib))
     
     #Concatenate tibble with all tickers for output
     fOutputTib <- bind_rows(fOutputTib, fIndicatorRowResult)
@@ -80,7 +79,7 @@ fnAddIntradayIndicatorCols <- function(aRecentDatapoints, aMasterDataFrame, aPer
   return(fOutputTib)
 }
 
-fnLiveIndicators<- function(aDataFrame, aLookbackLength){
+fnPriceSlope<- function(aDataFrame, aLookbackLength){
   if(nrow(aDataFrame) < aLookbackLength){
     return(tibble(Slope = NA, SloLoCI = NA, SloUpCI = NA))
   }
@@ -95,21 +94,32 @@ fnLiveIndicators<- function(aDataFrame, aLookbackLength){
   #Non-unique solution warnings are suppressed -- we're running enough fits that noisy solutions are ok.
   suppressWarnings(fTrendFit<- rq(formula = Last~(as.numeric(appendTime)%% 10000), data = aDataFrame))
   fParams <- tidy(fTrendFit)
+  #CIs sometimes evaluated to +/- infinity, so we will recode those to null prior to data entry
+  fLower = ifelse(as.numeric(fParams[2,3]) < -50000, NULL, as.numeric(fParams[2,3]))
+  fUpper = ifelse(as.numeric(fParams[2,4]) > 50000, NULL, as.numeric(fParams[2,4]))
   
-  return(tibble(Slope = as.numeric(fParams[2,2]), SloLoCI = as.numeric(fParams[2,3]), SloUpCI = as.numeric(fParams[2,4])))
+  return(tibble(Slope = as.numeric(fParams[2,2]), SloLoCI = fLower, SloUpCI = fUpper))
+}
+
+
+fnIntVol <- function(aDataFrame){
+  fVolDiff = aDataFrame[1, 'Volume'] - aDataFrame[2,'Volume']
+  #Appear to have occasional API data artifacts where volume decreases, recode these to 0 and keep going
+  fVolDiff = ifelse(fVolDiff<0, 0, fVolDiff)
+  return(tibble(IntervalVolume = fVolDiff))
 }
 
 #####
 #Global Variables
 logYahooTimes = FALSE
 logIndicatorCalcTimes = FALSE
-stockTickers<- read_csv("HighMKTCapHighVolTickers_20220610.csv")$value
-# n queries used for indicators, at most
-maxLookbackPeriod = 12
-#Length between queries, in seconds
-periodLength = 5
-
 connection = odbcConnect(dsn = 'Stock')
+stockTickers<- sqlFetch(connection, 'TickerLookup')
+sectorTickers<- sqlFetch(connection, 'SectorLookup')
+# n queries used for indicators, at most
+maxLookbackPeriod = 18
+#Length between queries, in seconds
+periodLength = 10
 
 #####
 #Begin our main processing
@@ -122,7 +132,7 @@ while (as.numeric(Sys.time()) %% (3600*24) < 72000)
   
   p1 <- Sys.time()
 #Generate our most recent set of quotes + indicator
-OneFinishedRowset <- fnPullQuoteData_singleQuote(stockTickers, logYahooTimes) %>% 
+OneFinishedRowset <- fnPullQuoteData_singleQuote(stockTickers$Symbol, logYahooTimes) %>% 
   fnAddIntradayIndicatorCols(WorkingDataset, aPeriodCount = maxLookbackPeriod, aPeriod_sec = periodLength )
 
 #Upload SQL and reclose connection
@@ -131,11 +141,11 @@ sqlSave(connection, OneFinishedRowset, tablename = 'YahooQuotesAndSlope', rownam
 #Manage persistent tibbles for future calcs
 WorkingDataset = bind_rows(WorkingDataset, OneFinishedRowset)
 
-if(nrow(WorkingDataset) > maxLookbackPeriod * length(stockTickers)){
+if(nrow(WorkingDataset) > maxLookbackPeriod * nrow(stockTickers)){
   #Can potentially skip arrangement if most recent rows are always appended to the bottom
   WorkingDataset= WorkingDataset %>% arrange(appendTime, Symbol)
   #Grab all rows after the earliest rowset retained
-  WorkingDataset = WorkingDataset[(length(stockTickers)+1):nrow(WorkingDataset),]
+  WorkingDataset = WorkingDataset[(nrow(stockTickers)+1):nrow(WorkingDataset),]
 }
 
 print(paste0('Loop Time is: ', difftime(Sys.time(), p1, units = 'secs')))

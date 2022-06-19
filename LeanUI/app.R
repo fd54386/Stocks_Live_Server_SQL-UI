@@ -18,6 +18,7 @@ library(RODBC)
 #####
 #Functions
 fnPullSQLStockData<- function(aConString, aSymbol){
+  print('runningSQL')
   fQuery = paste0("SELECT [Symbol]
       ,[TradeTime]
       ,[Last]
@@ -33,7 +34,7 @@ fnPullSQLStockData<- function(aConString, aSymbol){
 	    ,case when SloUpCI > 50000 then NULL else SloUpCI end as SloUpCI
 	  ,Volume - lag(Volume,1) over(order by appendTime asc) as IntervalVolume
   FROM [Stocks].[dbo].[YahooQuotesAndLADSlope]
-Where Symbol like '", 'SPY', "' and appendTime > cast(getdate() as Date)
+Where Symbol like '", aSymbol, "' and appendTime > cast(getdate()-1 as Date)
 order by appendTime asc")
   return(sqlQuery(connection, fQuery, 100))
 }
@@ -85,32 +86,43 @@ ui <- fluidPage(
 server <- function(input, output) {
   #Pull Day's data for our ticker
   
-  output$Title<- renderText(as.character(Sys.time()))
+
   
-  WorkingData <- fnPullSQLStockData(connection, input$TickerSearch)
+  #Initialize our working dataframe
+  #WorkingData <- fnPullSQLStockData(connection, input$TickerSearch)
+  
+  #Define a reactive function that will repull whenever the input is updated
+  #reactiveInput <- reactiveValues(tick = isolate(input$TickerSearch))
+
+  pullData <- reactive({
+    fnPullSQLStockData(connection, input$TickerSearch)
+  })
+  
+  # 
+  # reactiveInput$workingSet = fnPullSQLStockData(connection, input$TickerSearch)
   
   #Plot Ticker
   output$Chart <- renderPlot({
-
-        ggplot(data = WorkingData, aes(x = appendTime, y= Last)) +
+    output$Title<- renderText(as.character(Sys.time()))
+        ggplot(data = pullData(), aes(x = appendTime, y= Last)) +
           geom_line() + geom_point() + labs(title = input$TickerSearch)
       
   })
-# 
-#   #Plot Volume Profile
-#   output$VolumeProfile <- renderPlot({
-#      ggplot(data = WorkingData[], aes(x = appendTime, y= Last))+
-#          geom_violin(aes(weight = IntervalVolume))
-#    })
-# 
-#   #Plot Indicators
-#   output$IndicatorVsTime <- renderPlot({
-#     #We get warnings for the 'null' data for the beginning points prior to indicator calculation
-# 
-#         ggplot(data = WorkingData[seq(1, nrow(WorkingData), 6), ], aes(x = appendTime, y= Slope)) +
-#           geom_point() + geom_ribbon(aes(ymin = SloLoCI, ymax = SloUpCI), alpha = .1) +
-#           labs(title = 'Robust Regression Slope vs Time') + geom_hline(aes(yintercept = 0))
-#   })
+
+  #Plot Volume Profile
+  output$VolumeProfile <- renderPlot({
+     ggplot(data = pullData(), aes(x = appendTime, y= Last))+
+         geom_violin(aes(weight = IntervalVolume))
+   })
+
+  #Plot Indicators
+  output$IndicatorVsTime <- renderPlot({
+    #We get warnings for the 'null' data for the beginning points prior to indicator calculation
+
+        ggplot(data = pullData()[seq(1, nrow(WorkingData), 3), ], aes(x = appendTime, y= Slope)) +
+          geom_line() + geom_ribbon(aes(ymin = SloLoCI, ymax = SloUpCI), alpha = .1) +
+          labs(title = 'Robust Regression Slope vs Time') + geom_hline(aes(yintercept = 0))
+  })
       
 }
 
