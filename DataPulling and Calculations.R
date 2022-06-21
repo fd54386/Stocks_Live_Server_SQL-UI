@@ -14,7 +14,7 @@ library(RODBC)
 #1.  Pulls the most recent trade data from Yahoo for the tickers passed in.
 #Input -- Ticker List, table with the most recent trades for passing into the indicator function.
 #Action -- Query  Yahoo
-#Output -- New Lines for tickers of interest
+#Output -- New Lines for tickers of interest  
 fnPullQuoteData_singleQuote<- function(aTickerList, aLogger){
   #We will build query table throughout the subloop.  This frontruns Yahoo's maximum query size
   fQueryTibble = NULL
@@ -66,7 +66,7 @@ fnAddIntradayIndicatorCols <- function(aRecentDatapoints, aMasterDataFrame, aPer
     }
     #Bind existing row data with calculated data.
     #This would be a reasonable place to add additional indicator functions
-    fIndicatorRowResult <- bind_cols(aRecentDatapoints[i, ], fnPriceSlope(fCalcTib, aPeriodCount), fnRelVol(fCalcTib))
+    fIndicatorRowResult <- bind_cols(aRecentDatapoints[i, ], fnPriceSlope(fCalcTib, aPeriodCount), fnIntVol(fCalcTib))
     
     #Concatenate tibble with all tickers for output
     fOutputTib <- bind_rows(fOutputTib, fIndicatorRowResult)
@@ -92,13 +92,23 @@ fnPriceSlope<- function(aDataFrame, aLookbackLength){
   #we'll run against appendtime instead for now (flat is useful!), may go for tryCatch if more shenanigans pop up.
   
   #Non-unique solution warnings are suppressed -- we're running enough fits that noisy solutions are ok.
+  tryCatch(
+    expr ={
   suppressWarnings(fTrendFit<- rq(formula = Last~(as.numeric(appendTime)%% 10000), data = aDataFrame))
   fParams <- tidy(fTrendFit)
   #CIs sometimes evaluated to +/- infinity, so we will recode those to null prior to data entry
-  fLower = ifelse(as.numeric(fParams[2,3]) < -50000, NULL, as.numeric(fParams[2,3]))
-  fUpper = ifelse(as.numeric(fParams[2,4]) > 50000, NULL, as.numeric(fParams[2,4]))
-  
-  return(tibble(Slope = as.numeric(fParams[2,2]), SloLoCI = fLower, SloUpCI = fUpper))
+  fLower = ifelse(as.numeric(fParams[2,3]) < -50000, as.numeric(NULL), as.numeric(fParams[2,3]))
+  fUpper = ifelse(as.numeric(fParams[2,4]) > 50000, as.numeric(NULL), as.numeric(fParams[2,4]))
+  fReturn = tibble(Slope = as.numeric(fParams[2,2]), SloLoCI = fLower, SloUpCI = fUpper)
+  return(fReturn) 
+    }
+  ,error = function(e){
+    print(paste0('fnPriceSlope regression error.  Symbol: ', aDataFrame$Symbol[1], ' Time: ', as.character(Sys.time()), ' Error: ', e))
+    
+    fReturn = tibble (Slope = as.numeric(NULL), SloLoCI = as.numeric(NULL), SloUpCI = as.numeric(NULL))
+    return(fReturn) 
+    }
+  )
 }
 
 

@@ -30,9 +30,9 @@ fnPullSQLStockData<- function(aConString, aSymbol){
       ,[Volume]
       ,[appendTime]
       ,[Slope]
-      ,case when [SloLoCI] < -50000 then NULL else SloLoCI end as SloLoCI
-	    ,case when SloUpCI > 50000 then NULL else SloUpCI end as SloUpCI
-	  ,Volume - lag(Volume,1) over(order by appendTime asc) as IntervalVolume
+      ,[SloLoCI]
+	    ,SloUpCI
+	  ,IntervalVolume
   FROM [Stocks].[dbo].[YahooQuotesAndLADSlope]
 Where Symbol like '", aSymbol, "' and appendTime > cast(getdate()-1 as Date)
 order by appendTime asc")
