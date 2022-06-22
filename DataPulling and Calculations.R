@@ -113,7 +113,11 @@ fnPriceSlope<- function(aDataFrame, aLookbackLength){
 
 
 fnIntVol <- function(aDataFrame){
-  fVolDiff = aDataFrame[1, 'Volume'] - aDataFrame[2,'Volume']
+  if(nrow(aDataFrame) == 1){
+    return(tibble(IntervalVolume =0))
+  }
+  
+  fVolDiff = aDataFrame[nrow(aDataFrame), 'Volume'] - aDataFrame[nrow(aDataFrame)-1,'Volume']
   #Appear to have occasional API data artifacts where volume decreases, recode these to 0 and keep going
   fVolDiff = ifelse(fVolDiff<0, 0, fVolDiff)
   return(tibble(IntervalVolume = fVolDiff))
@@ -138,8 +142,7 @@ WorkingDataset = NULL
 
 while (as.numeric(Sys.time()) %% (3600*24) < 72000)
 {
- print(paste0(as.numeric(Sys.time()) %% (3600*24), 'is still less than 72000'))
-  
+
   p1 <- Sys.time()
 #Generate our most recent set of quotes + indicator
 OneFinishedRowset <- fnPullQuoteData_singleQuote(stockTickers$Symbol, logYahooTimes) %>% 
