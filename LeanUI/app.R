@@ -17,8 +17,7 @@ library(RODBC)
 
 #####
 #Functions
-fnPullSQLStockData<- function(aConString, aSymbol){
-  print('runningSQL')
+fnPullSQLTickerData<- function(aConString, aSymbol){
   fQuery = paste0("SELECT [Symbol]
       ,[TradeTime]
       ,[Last]
@@ -34,14 +33,109 @@ fnPullSQLStockData<- function(aConString, aSymbol){
 	    ,SloUpCI
 	  ,IntervalVolume
   FROM [Stocks].[dbo].[YahooQuotesAndLADSlope]
-Where Symbol like '", aSymbol, "' and appendTime > cast(getdate()-1 as Date)
+Where Symbol like '", aSymbol, "' and appendTime > cast(getdate() as Date)
 order by appendTime asc")
   return(sqlQuery(connection, fQuery, 100))
+}
+fnPullSectorSnapshot <- function(aConnection){
+  fQuerySector = "SELECT top(10) [Sector]
+	  ,[Last]
+      ,[Change]
+      ,[pctChange]
+      ,[Open]
+      ,[High]
+      ,[Low]
+      ,[Volume] * Last as DollarVolume
+	  ,appendTime
+  FROM [Stocks].[dbo].[SectorLookup] inner join [Stocks].[dbo].[YahooQuotesAndLADSlope] on YahooTickerforSP500Sector = Symbol
+  where appendTime > convert(date, getdate())
+
+order by appendTime desc"
+  
+fSectorData <- as.tibble(sqlQuery(aConnection, fQuerySector))
+
+  fQuerySPY = "Select top (1) 'SP500' as [Sector]
+	  ,[Last]
+      ,[Change]
+      ,[pctChange]
+      ,[Open]
+      ,[High]
+      ,[Low]
+      ,[Volume] * Last as DollarVolume
+	  ,appendTime
+
+	From [Stocks].[dbo].[YahooQuotesAndLADSlope]
+	where appendTime > convert(date, getdate()) and Symbol like 'SPY'
+order by appendTime desc
+  "
+fSPYData <- as.tibble(sqlQuery(aConnection, fQuerySPY))
+  
+  
+  return(bind_rows(fSectorData, fSPYData) %>% arrange (desc(pctChange)))
+}
+fnPullSectorsDaily <- function (aConnection){
+  fQuery = "SELECT Sector, Symbol, pctChange, appendTime
+
+  FROM [Stocks].[dbo].[SectorLookup] sec inner join [Stocks].[dbo].[YahooQuotesAndLADSlope] quote on sec.YahooTickerforSP500Sector = Quote.Symbol
+  where appendTime > convert(date, getdate())
+
+  union all
+  
+  Select 'SPY' as Sector, Symbol, pctChange, appendTime
+  from [Stocks].[dbo].[YahooQuotesAndLADSlope]
+  where appendTime > convert(date, getdate()) and symbol like 'SPY'"
+  
+  return(sqlQuery(aConnection, fQuery))
+  
+}
+fnPullWithinSectorSnapshot <- function(aConnection, aSector){
+#Should be manageable either way with only a few hundred tickers, but probably want to determine if joining sector data is more efficient than using a 'where in () ' query with 100 tickers
+  fQuerySymbols = paste0("SELECT [Symbol]
+FROM [Stocks].[dbo].[TickerLookup] where Sector like '", aSector, "'")
+
+  #Pull sector tickers
+  fSectorTickers <- sqlQuery(aConnection, fQuerySymbols)
+
+  #Trying to include a join statement to get ticker name
+  # #Prep the quote query -- tickers with a where in statement and most recent 1 datapoint
+  # #Using a wildcard for column names for indicator scalability
+  # fInStatement <- paste0("'", fSectorTickers$Symbol, "'", collapse = ", ")
+  # fCount <- nrow(fSectorTickers)
+  # 
+  # fQueryLast = paste0("Select top (", as.character(fCount), ") 
+  #                       FROM [Stocks].[dbo].[YahooQuotesAndLADSlope]
+  #                       where symbol in (", fInStatement,") 
+  #                       order by appendTime desc, pctChange asc")
+  
+  fCount <- nrow(fSectorTickers)
+  fQueryLast = paste0("
+  Select top (", as.character(fCount), ") 
+      quote.* 
+      ,left([Name], 10) as ShortName
+      ,[Industry]
+      ,[MarketCap]
+      ,[MarketCapDate]
+	    ,[Sector]
+	  FROM [Stocks].[dbo].[TickerLookup] tick inner join [Stocks].[dbo].[YahooQuotesAndLADSlope] quote on tick.Symbol = quote.Symbol
+    where sector like '", aSector,"' 
+    order by quote.appendTime desc, quote.pctChange asc")
+#Using wildcard in query requires reformatting but allows us to pull all future indicators
+  #relocate will move to front by default
+  fResult <- as_tibble(sqlQuery(aConnection, fQueryLast)) 
+  fResult <- fResult %>% relocate(Symbol, ShortName, pctChange, Last, Open, High, Low, Industry, MarketCap, MarketCapDate, Sector, appendTime)
+  return(fResult)
+}
+fnPullSectorList <- function(aConnection){
+  fQuery = "SELECT [Sector]
+  FROM [Stocks].[dbo].[SectorLookup]"
+  
+  return(tibble(sqlQuery(aConnection, fQuery)))
 }
 
 #####
 #Global Variables
 connection = odbcConnect(dsn = 'Stock')
+sectorList <- fnPullSectorList(connection)$Sector
 
 #####
 ui <- fluidPage(
@@ -50,80 +144,99 @@ ui <- fluidPage(
   titlePanel(h1('Stock Scanner and Custom Chart Indicators'),
       ),
   
-  # Sidebar 
-  sidebarLayout(
-    sidebarPanel(
-      p('LastUpdated: ', textOutput('Title')),
-      #Text Input Box to Pull a Ticker
-      textInput('TickerSearch', label = 'Specify Ticker', value = "SPY")
+  # Sidebar
+  navbarPage("Views",
+    tabPanel("Sector Performance", plotOutput('SectorsChart'), dataTableOutput("SectorPerformance")
+             ), 
+    tabPanel("Within Sector Performance", 
+      sidebarLayout(
+        sidebarPanel(
+          selectInput('SectorSearch', label = 'Specify Sector to Screen', choices = sectorList)
+          ),
+        mainPanel(dataTableOutput("StockPerformanceWithinSector"))
+      )),
+    tabPanel("Ticker Performance",
+      sidebarLayout(
+        sidebarPanel(
+          p('LastUpdated: ', textOutput('Title')),
+          #Text Input Box to Pull a Ticker
+          textInput('TickerSearch', label = 'Specify Ticker', value = "SPY")
+          #,
+        ),
       
-      #List of everything pulled currently
-      #dataTableOutput("IndicatorList"),
-      
-      #Filters toggles for RS / RW / Volume
-      
-      #Toggle for auto refresh with timescale (seconds)
-      #Button for manual refresh
-      
-    ),
-    
-    # Plots
-    mainPanel(
-      
-      fluidRow( column(6, 
-      plotOutput("Chart")),
-      column(3, 
-      # Not available with historical setup at the moment (requires a lag reference)
-      plotOutput("VolumeProfile"))), 
-      fluidRow(column(6, 
-      plotOutput("IndicatorVsTime")))
-      
-    )
+      # Plots
+      mainPanel(
+        fluidRow( column(6, 
+                         plotOutput("Chart")),
+                  column(3, 
+                         #Commented for 6-22 only while interval volume meaningfully populates
+                         #plotOutput("VolumeProfile")
+                  )), 
+        fluidRow(column(6, 
+                        plotOutput("IndicatorVsTime"))),
+        #May want to hide this on a separate tab since the auto refresh moves the screen focus.
+
+      )
+    ))
   )
+
 )
 
 #####
 server <- function(input, output) {
-  #Pull Day's data for our ticker
-  
-
-  
-  #Initialize our working dataframe
-  #WorkingData <- fnPullSQLStockData(connection, input$TickerSearch)
-  
-  #Define a reactive function that will repull whenever the input is updated
-  #reactiveInput <- reactiveValues(tick = isolate(input$TickerSearch))
-
-  pullData <- reactive({
-    fnPullSQLStockData(connection, input$TickerSearch)
+  #Charts for ticker of interest, only updates when ticker entered in
+  #Pull today's data for our ticker
+  #Reactive function only evaluates when the TickerSearch input is updated (verified with a quick printline in the fn call)
+  pullTicker <- reactive({
+    fnPullSQLTickerData(connection, input$TickerSearch)
   })
   
-  # 
-  # reactiveInput$workingSet = fnPullSQLStockData(connection, input$TickerSearch)
+  #Auto updating tables for sector snapshots
+  #Set a timer, update every 60 seconds
+  autoInvalidate1min <- reactiveTimer(60000)
   
   #Plot Ticker
   output$Chart <- renderPlot({
     output$Title<- renderText(as.character(Sys.time()))
-        ggplot(data = pullData(), aes(x = appendTime, y= Last)) +
+        ggplot(data = pullTicker(), aes(x = appendTime, y= Last)) +
           geom_line() + geom_point() + labs(title = input$TickerSearch)
       
   })
 
   #Plot Volume Profile
   output$VolumeProfile <- renderPlot({
-     ggplot(data = pullData(), aes(x = appendTime, y= Last))+
+     ggplot(data = pullTicker(), aes(x = appendTime, y= Last))+
          geom_violin(aes(weight = IntervalVolume))
    })
 
   #Plot Indicators
   output$IndicatorVsTime <- renderPlot({
-    #We get warnings for the 'null' data for the beginning points prior to indicator calculation
-
-        ggplot(data = pullData()[seq(1, nrow(WorkingData), 3), ], aes(x = appendTime, y= Slope)) +
+    
+        ggplot(data = pullTicker()[seq(1, nrow(pullTicker()), 3), ], aes(x = appendTime, y= Slope)) +
           geom_line() + geom_ribbon(aes(ymin = SloLoCI, ymax = SloUpCI), alpha = .1) +
           labs(title = 'Robust Regression Slope vs Time') + geom_hline(aes(yintercept = 0))
   })
-      
+  
+  #Define a reactive variable for our sector pull, except I don't think we need it since we aren't dependent on input, we can just have the output call and timer manage this
+  # pullSector <- reactive({
+  #   fnPullSectorData(connection)
+  # })
+  # 
+  output$SectorPerformance<- renderDataTable({
+    autoInvalidate1min()
+    fnPullSectorSnapshot(connection)
+  })
+  
+  output$SectorsChart <- renderPlot({
+    autoInvalidate1min()
+    print('tried to plot')
+    ggplot(data = fnPullSectorsDaily(connection), aes(x = appendTime, y= pctChange, group = Sector, color = Sector)) + geom_point() 
+  })
+  
+  output$StockPerformanceWithinSector <- renderDataTable({
+    autoInvalidate1min()
+    fnPullWithinSectorSnapshot(connection, input$SectorSearch)
+  })
 }
 
 # Run the application 
