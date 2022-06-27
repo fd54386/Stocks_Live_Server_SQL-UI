@@ -168,8 +168,7 @@ ui <- fluidPage(
         fluidRow( column(6, 
                          plotOutput("Chart")),
                   column(3, 
-                         #Commented for 6-22 only while interval volume meaningfully populates
-                         #plotOutput("VolumeProfile")
+                         plotOutput("VolumeProfile")
                   )), 
         fluidRow(column(6, 
                         plotOutput("IndicatorVsTime"))),
@@ -205,7 +204,7 @@ server <- function(input, output) {
   #Plot Volume Profile
   output$VolumeProfile <- renderPlot({
      ggplot(data = pullTicker(), aes(x = appendTime, y= Last))+
-         geom_violin(aes(weight = IntervalVolume))
+         geom_violin(aes(weight = IntervalVolume)) + labs(title = 'Volume Profile')
    })
 
   #Plot Indicators
