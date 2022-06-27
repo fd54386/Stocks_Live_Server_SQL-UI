@@ -1,0 +1,12 @@
+﻿Sector,YahooTickerforSP500Sector
+Basic Materials,^SP500-15
+Consumer Discretionary,^SP500-25
+Consumer Staples,^SP500-30
+Energy,^SP500-10TR
+Finance,^SP500-40
+Health Care,^SP500-35
+Industrials,^SP500-20
+Real Estate,^SP500-60
+Technology,^SP500-45
+Telecommunications,^SP500-50
+Utilities,^SP500-55
