@@ -37,11 +37,11 @@ Where Symbol like '", aSymbol, "' and appendTime > cast(getdate() as Date)
 order by appendTime asc")
   return(sqlQuery(connection, fQuery, 100))
 }
-fnPullSectorSnapshot <- function(aConnection){
-  fQuerySector = "SELECT top(10) [Sector]
-	  ,[Last]
-      ,[Change]
-      ,[pctChange]
+fnPullSectorSnapshot <- function(aConnection, aNSectors ){
+  fQuerySector = paste0("SELECT top(",aNSectors, ") [Sector]
+	  ,round([Last],2) as Last
+      ,round([Change], 2) as Change
+      ,round([pctChange], 2) as pctChange
       ,[Open]
       ,[High]
       ,[Low]
@@ -50,14 +50,14 @@ fnPullSectorSnapshot <- function(aConnection){
   FROM [Stocks].[dbo].[SectorLookup] inner join [Stocks].[dbo].[YahooQuotesAndLADSlope] on YahooTickerforSP500Sector = Symbol
   where appendTime > convert(date, getdate())
 
-order by appendTime desc"
+order by appendTime desc")
   
 fSectorData <- as.tibble(sqlQuery(aConnection, fQuerySector))
 
   fQuerySPY = "Select top (1) 'SP500' as [Sector]
 	  ,[Last]
-      ,[Change]
-      ,[pctChange]
+      ,round([Change], 2) as Change
+      ,round([pctChange], 2) as pctChange
       ,[Open]
       ,[High]
       ,[Low]
@@ -69,10 +69,10 @@ fSectorData <- as.tibble(sqlQuery(aConnection, fQuerySector))
 order by appendTime desc
   "
 fSPYData <- as.tibble(sqlQuery(aConnection, fQuerySPY))
-  
-  
+
   return(bind_rows(fSectorData, fSPYData) %>% arrange (desc(pctChange)))
 }
+
 fnPullSectorsDaily <- function (aConnection){
   fQuery = "SELECT Sector, Symbol, pctChange, appendTime
 
@@ -116,6 +116,8 @@ FROM [Stocks].[dbo].[TickerLookup] where Sector like '", aSector, "'")
       ,[MarketCap]
       ,[MarketCapDate]
 	    ,[Sector]
+	    ,IntervalVolume * Last as DollarIntVol
+	    ,Volume * Last / MarketCap * 100 as DailyVolumeVsCap
 	  FROM [Stocks].[dbo].[TickerLookup] tick inner join [Stocks].[dbo].[YahooQuotesAndLADSlope] quote on tick.Symbol = quote.Symbol
     where sector like '", aSector,"' 
     order by quote.appendTime desc, quote.pctChange asc")
@@ -149,12 +151,9 @@ ui <- fluidPage(
     tabPanel("Sector Performance", plotOutput('SectorsChart'), dataTableOutput("SectorPerformance")
              ), 
     tabPanel("Within Sector Performance", 
-      sidebarLayout(
-        sidebarPanel(
-          selectInput('SectorSearch', label = 'Specify Sector to Screen', choices = sectorList)
-          ),
-        mainPanel(dataTableOutput("StockPerformanceWithinSector"))
-      )),
+        selectInput('SectorSearch', label = 'Specify Sector to Screen', choices = sectorList),
+        dataTableOutput("StockPerformanceWithinSector")
+        ),
     tabPanel("Ticker Performance",
       sidebarLayout(
         sidebarPanel(
@@ -217,25 +216,32 @@ server <- function(input, output) {
           labs(title = 'Robust Regression Slope vs Time') + geom_hline(aes(yintercept = 0))
   })
   
-  #Define a reactive variable for our sector pull, except I don't think we need it since we aren't dependent on input, we can just have the output call and timer manage this
-  # pullSector <- reactive({
-  #   fnPullSectorData(connection)
-  # })
-  # 
   output$SectorPerformance<- renderDataTable({
     autoInvalidate1min()
-    fnPullSectorSnapshot(connection)
+    formattedSecData <- fnPullSectorSnapshot(connection, length(sectorList))
+    formattedSecData$DollarVolume <- formatC(formattedSecData$DollarVolume, format = 'e', digits = 2)
+    formattedSecData
   })
   
   output$SectorsChart <- renderPlot({
     autoInvalidate1min()
-    print('tried to plot')
     ggplot(data = fnPullSectorsDaily(connection), aes(x = appendTime, y= pctChange, group = Sector, color = Sector)) + geom_point() 
   })
   
   output$StockPerformanceWithinSector <- renderDataTable({
     autoInvalidate1min()
-    fnPullWithinSectorSnapshot(connection, input$SectorSearch)
+    formattedSecStocks <- fnPullWithinSectorSnapshot(connection, input$SectorSearch)
+    formattedSecStocks$pctChange <- formatC(formattedSecStocks$pctChange, format = 'f', digits = 2)
+    formattedSecStocks$Last <- formatC(formattedSecStocks$Last, format = 'f', digits = 2)
+    formattedSecStocks$Open <- formatC(formattedSecStocks$Open, format = 'f', digits = 2)
+    formattedSecStocks$High <- formatC(formattedSecStocks$High, format = 'f', digits = 2)
+    formattedSecStocks$Low <- formatC(formattedSecStocks$Low, format = 'f', digits = 2)
+    formattedSecStocks$MarketCap <- formatC(formattedSecStocks$MarketCap, format = 'e', digits = 2)
+    formattedSecStocks$Volume <- formatC(formattedSecStocks$Volume, format = 'e', digits = 2)
+    formattedSecStocks$IntervalVolume <- formatC(formattedSecStocks$IntervalVolume, format = 'e', digits = 2)
+    formattedSecStocks$DollarIntVol <- formatC(formattedSecStocks$DollarIntVol, format = 'e', digits = 2)
+    formattedSecStocks$DailyVolumeVsCap <- formatC(formattedSecStocks$DailyVolumeVsCap, format = 'f', digits = 2)
+    formattedSecStocks
   })
 }
 

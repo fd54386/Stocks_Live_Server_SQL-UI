@@ -22,6 +22,11 @@ fnPullQuoteData_singleQuote<- function(aTickerList, aLogger){
   p1 <- Sys.time()
   print(paste0('PreYahooTime is: ',p1))
   }
+  #Error after 521 queries between 9:35:20 and 11:02:41 broke the loop.  
+  # Error in open.connection(con, "rb") : 
+  #   Timeout was reached: [query1.finance.yahoo.com] Operation timed out after 10008 milliseconds with 0 out of 0 bytes received
+  #Will need some sort of trycatch to fail gracefully.
+  
   for (j in 0:(ceiling(length(aTickerList) / 200) - 1))
   {
     fTickerShort <- aTickerList[(j*200+1):min(length(aTickerList),((1+j)*200)) ]
