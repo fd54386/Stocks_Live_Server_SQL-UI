@@ -7,15 +7,16 @@ This project is a personal dashboard to help view the stock market each day.  Mo
 
 There are three separate structures used in this project.  
 
-* [DataPulling and Calculations](DataPulling and Calculations.R) controls an interface with Yahoo Finance to pull in stock quotes at a specified interval.  Custom indicators are calculated as the data comes in to minimize calculations on the UI portion.  Results are uploaded to a private SQL server
+* [DataPulling and Calculations](DataPulling_and_Calculations.R) controls an interface with Yahoo Finance to pull in stock quotes at a specified interval.  Custom indicators are calculated as the data comes in to minimize calculations on the UI portion.  Results are uploaded to a private SQL server
 * A personal SQL Server.  Tables currently include lookups for general ticker and sector information as well as the workhorse table that logs the quotes.  A full day of quotes for 500 tickers at 1 quote / 10 seconds is ~180MB of data.
 * [app.R](app.r) An R Shiny Dashboard to act as a ui for the incoming data.  Views exist for overall market health, within sector performance, and single ticker performance.
 
 # Preview
 
-Tab 1: ![Tab1](/UI Tab 1 -- Sector Trends.png "Tab 1 - Sector Trends")
-Tab 2: ![Tab1](/UI Tab 2 -- Within Sector Performance.png "Tab 2 - Within Sector Performance")
-Tab 3: ![Tab1](/UI Tab 3 -- Single Ticker Performance.png "Tab 3 - Ticker Performance")
+Tab 1: ![Tab1](UI Tab 1 -- Sector Trends.png)
+
+Tab 2: ![Tab2](/UI Tab 2 -- Within Sector Performance.png "Tab 2 - Within Sector Performance")
+Tab 3: ![Tab3](/UI Tab 3 -- Single Ticker Performance.png "Tab 3 - Ticker Performance")
 
 # Instructions for Use
 * Most of the setup work will be establishing your own SQL server and updating the connection string in the 'global variables' code chunk to point to it. Table designs are available [here](https://github.com/fd54386/Stocks_Live_Server_SQL-UI/blob/main/SQLTableDesign.png).  Note that the UI queries a view that's a Select * from dbo.YahooQuotesAndSlope in order to avoid row lock issues.
