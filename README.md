@@ -13,12 +13,14 @@ There are three separate structures used in this project.
 
 # Preview
 
-Tab 1: ![Tab1](UI Tab 1 -- Sector Trends.png)
+Tab 1: ![Tab1](Tab1_SectorTrends.png)
 
-Tab 2: ![Tab2](/UI Tab 2 -- Within Sector Performance.png "Tab 2 - Within Sector Performance")
-Tab 3: ![Tab3](/UI Tab 3 -- Single Ticker Performance.png "Tab 3 - Ticker Performance")
+Tab 2: ![Tab2](Tab2_WithinSector.png)
+
+Tab 3: ![Tab3](Tab3_SingleTick.png)
 
 # Instructions for Use
+
 * Most of the setup work will be establishing your own SQL server and updating the connection string in the 'global variables' code chunk to point to it. Table designs are available [here](https://github.com/fd54386/Stocks_Live_Server_SQL-UI/blob/main/SQLTableDesign.png).  Note that the UI queries a view that's a Select * from dbo.YahooQuotesAndSlope in order to avoid row lock issues.
 
 * Data is only plotted for any stock quotes pulled today, so the datapulling script needs to be running before the shiny app will have anything to present.  For consistent data collection, the DataPulling and Calculations.R script should be pulled into a scheduled task.  Note that extended hours trades do not update the quotes, so datacollection is only worthwhile from 9:30am to 4:00pm Eastern Time.
@@ -26,11 +28,12 @@ Tab 3: ![Tab3](/UI Tab 3 -- Single Ticker Performance.png "Tab 3 - Ticker Perfor
 I think that covers it in broad strokes, but certainly let me know if you try to use this project and find something is obscured.  I believe it's partitioned and commented well enough that it should be quick to skim and troubleshoot.
 
 
-#Possible Future Work - 6-27-2022
+# Possible Future Work - 6-27-2022
 
 Further development on this public project is currently on hiatus. Polish could certainly be applied to chart formatting, but polish should be an ongoing secondary effort while the focus is to ensure software is useful for the folks who don't mind tinkering on their own.  My next efforts will be privately exploring various trade strategies to see if they might be successful.  
 
 Interesting public features I may explore soon are:
+* Interactive timer / toggles for better refresh behavior control -- tabs 1 & 2 refresh every 1 minute on a reactive timer.  Tab 3 refreshes whenever ticker is entered.
 * Plotly graphs, for interactivity
 * Yahoo Quotes may time out, needs to fail more gracefully - rare occurrence so far.
 * E-mail or other notifications for interesting indicator or price action behavior.
