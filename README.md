@@ -7,9 +7,9 @@ This project is a personal dashboard to help view the stock market each day.  Mo
 
 There are three separate structures used in this project.  
 
-* [DataPulling and Calculations](DataPulling_and_Calculations.R) controls an interface with Yahoo Finance to pull in stock quotes at a specified interval.  Custom indicators are calculated as the data comes in to minimize calculations on the UI portion.  Results are uploaded to a private SQL server
+* [DataPulling and Calculations](./DataPulling and Calculations.R) controls an interface with Yahoo Finance to pull in stock quotes at a specified interval.  Custom indicators are calculated as the data comes in to minimize calculations on the UI portion.  Results are uploaded to a private SQL server
 * A personal SQL Server.  Tables currently include lookups for general ticker and sector information as well as the workhorse table that logs the quotes.  A full day of quotes for 500 tickers at 1 quote / 10 seconds is ~180MB of data.
-* [app.R](app.r) An R Shiny Dashboard to act as a ui for the incoming data.  Views exist for overall market health, within sector performance, and single ticker performance.
+* [app.R](./LeanUI/app.R) An R Shiny Dashboard to act as a ui for the incoming data.  Views exist for overall market health, within sector performance, and single ticker performance.
 
 # Preview
 
